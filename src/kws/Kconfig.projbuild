@@ -1,0 +1,85 @@
+menu "AFE keyword recognition"
+    choice KWS_INPUT_SOURCE
+        prompt "KWS input source"
+        default KWS_INPUT_NSCORE
+        help
+            Select the 16-kHz PCM16 mono stream sent to KWS. This choice
+            does not change AFE, NsCore, speaker playback or Capture2 audio.
+    config KWS_INPUT_NSCORE
+        bool "Post-AFE NsCore output (microphone)"
+        help
+            Use the current AFE microphone output after core1 NsCore.
+    config KWS_INPUT_USB_PLAYBACK_REFERENCE
+        bool "USB playback mono at AEC reference input"
+        help
+            Copy the reference channel immediately before AFE feed: the
+            actual 16-kHz I2S playback downmixed as (L+R)/2, including the
+            pipeline and configured AEC reference delay. Missing playback
+            is silence. This path bypasses microphone AEC/AGC and NsCore.
+    endchoice
+
+    config KWS_INTERNAL_TENSOR_KB
+        int "Internal SRAM budget for neural tensors (KiB)"
+        range 0 256
+        default 256
+        help
+            Remaining tensors use PSRAM. This is an upper limit: startup also
+            reserves 64 KiB of total internal free memory for the system,
+            and 4 KiB within the largest block for model planning. This
+            avoids disabling SRAM tensors on a fragmented internal heap.
+            A lower actual budget can increase RTF;
+            verify on the target hardware.
+endmenu
+
+menu "KWS-Filter"
+    config KWS_FILTER_KEYWORD_THRESHOLD_PERCENT
+        int "Keyword probability threshold (%)"
+        range 0 100
+        default 80
+        help
+            Compile-time default when no valid persisted HID setting exists.
+            Minimum softmax probability of the top-1 keyword in every
+            confirming frame. Softmax includes all current model classes and uses
+            max subtraction for numerical stability. 80 means 0.80.
+
+    config KWS_FILTER_COOLDOWN_MS
+        int "Global cooldown after a keyword trigger (ms)"
+        range 1 60000
+        default 500
+        help
+            Compile-time default when no valid persisted HID setting exists.
+            Suppress all keyword triggers for this wall-clock duration after
+            a keyword result is successfully queued. No keyword confirmation
+            frames accumulate during cooldown.
+            Same-word deduplication still requires a stable background or a
+            different confirmed class before the same word triggers again.
+
+    config KWS_FILTER_STABLE_FRAMES
+        int "Consecutive keyword frames to trigger (10 ms/frame)"
+        range 1 1000
+        default 3
+        help
+            Compile-time default when no valid persisted HID setting exists.
+            Require this many consecutive frames of the same top-1 keyword,
+            each reaching the probability threshold. Class changes or weak
+            frames reset the count. Default 3 corresponds to 30 ms of audio.
+            Silence/unknown use this frame count to update deduplication,
+            without a keyword probability requirement or result log.
+            The fixed 100-frame startup warmup remains in effect.
+
+    choice KWS_FILTER_NEED_VAD_CHECKED
+        prompt "Need-VAD-Checked"
+        default KWS_FILTER_NEED_VAD_CHECKED_NO
+        help
+            Compile-time default when no valid persisted HID setting exists.
+            No preserves the existing keyword confirmation behavior.
+            Yes additionally requires VAD speech/high throughout every
+            confirming 10-ms keyword frame. Silence or unknown VAD resets
+            keyword confirmation. Background classes still update deduplication
+            without a VAD requirement. Audio input and inference remain running.
+    config KWS_FILTER_NEED_VAD_CHECKED_NO
+        bool "No"
+    config KWS_FILTER_NEED_VAD_CHECKED_YES
+        bool "Yes"
+    endchoice
+endmenu

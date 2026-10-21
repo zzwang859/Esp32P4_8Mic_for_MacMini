@@ -1,0 +1,283 @@
+menu "ESP32-P4 USB audio"
+
+    config USB_AUDIO_RX_I2S_PORT
+        int "8-channel TDM input I2S port"
+        range 0 2
+        default 0
+
+    config USB_AUDIO_RX_SLAVE
+        bool "TDM input is an I2S slave"
+        default n
+
+    config USB_AUDIO_RX_MCLK_GPIO
+        int "TDM input MCLK GPIO (-1 unused)"
+        range -1 63
+        default -1
+
+    config USB_AUDIO_RX_BCLK_GPIO
+        int "TDM input BCLK GPIO"
+        range -1 63
+        default -1
+
+    config USB_AUDIO_RX_WS_GPIO
+        int "TDM input WS GPIO"
+        range -1 63
+        default -1
+
+    config USB_AUDIO_RX_DIN_GPIO
+        int "TDM input data GPIO"
+        range -1 63
+        default -1
+
+    config USB_AUDIO_TX_I2S_PORT
+        int "Stereo output I2S port"
+        range 0 2
+        default 1
+
+    config USB_AUDIO_TX_SLAVE
+        bool "Stereo output is an I2S slave"
+        default n
+
+    config USB_AUDIO_TX_MCLK_GPIO
+        int "Stereo output MCLK GPIO (-1 unused)"
+        range -1 63
+        default -1
+
+    config USB_AUDIO_TX_BCLK_GPIO
+        int "Stereo output BCLK GPIO"
+        range -1 63
+        default -1
+
+    config USB_AUDIO_TX_WS_GPIO
+        int "Stereo output WS GPIO"
+        range -1 63
+        default -1
+
+    config USB_AUDIO_TX_DOUT_GPIO
+        int "Stereo output data GPIO"
+        range -1 63
+        default -1
+
+    config USB_AUDIO_USB_TASK_PRIORITY
+        int "TinyUSB task priority"
+        range 1 15
+        default 6
+
+    config USB_AUDIO_CAPTURE_TASK_PRIORITY
+        int "Capture task priority"
+        range 1 15
+        default 7
+
+    config USB_AUDIO_PLAYBACK_TASK_PRIORITY
+        int "Playback task priority"
+        range 1 15
+        default 7
+
+    config AUDIO_DIAGNOSTICS_QUIET_WHILE_STREAMING
+        bool "Mute informational diagnostics during USB playback/capture"
+        default y
+        help
+            Suppress CPU, DSP, DOA, USB status and console informational logs
+            while any USB playback or capture interface is active. Warnings
+            and errors still use a bounded, nonblocking background log queue.
+            Disabling this option restores background informational output;
+            audio tasks never wait for UART transmission.
+            KWS performance reports follow this policy; detected keywords
+            remain visible as application results through the same queue.
+
+    config AUDIO_DIAGNOSTICS_CAPTURE2_SUSPEND_UART
+        bool "Suspend all console UART output during Capture2 (diagnostic)"
+        default n
+        help
+            A/B test for recording starvation triggered by console output.
+            While Capture2 is open, discard ordinary logs, KWS results,
+            raw logits and console acknowledgments, including stdout/stderr.
+            Recognition and command handling continue. Logs resume when
+            Capture2 closes; suppressed output is not replayed.
+            This takes precedence over l/p log switches. Keep disabled for
+            normal operation if recognition results are needed during capture.
+
+endmenu
+
+menu "Microphone array processing"
+    config ARRAY_RADIUS_MM
+        int "Circular microphone array radius (mm)"
+        range 1 500
+        default 56
+    config ARRAY_DOA_ROTATION_SPEED_DEG_PER_SEC
+        int "DOA rotation speed limit (deg/s)"
+        range 1 360
+        default 30
+        help
+            When AFE VAD reports speech, move DAS steering toward the latest
+            valid DOA target along the shortest angular path at up to this
+            speed. Silence and unknown VAD states freeze the current angle.
+            Steering advances per audio hop; paused time is not accumulated.
+    config ARRAY_AEC_REFERENCE_DELAY_MS
+        int "Additional playback reference delay (ms)"
+        range 0 200
+        default 0
+        help
+            Tune on hardware for speaker DMA and acoustic path latency.
+            The DAS OLA and resampler delays are already applied to reference.
+    config ARRAY_AGC_GAIN_DB
+        int "AFE AGC compression gain (dB)"
+        range 0 30
+        default 20
+    config ARRAY_VAD_MIN_SPEECH_MS
+        int "AFE VAD minimum speech duration (ms)"
+        range 33 2000
+        default 128
+        help
+            Minimum speech duration before VAD reports speech. The ESP-SR
+            interface requires more than 32 ms. The AFE history ring size
+            automatically follows this setting plus the fixed 128-ms delay.
+    config ARRAY_POST_NS_MIN_GAIN_PERCENT
+        int "Post-AFE NsCore minimum gain (%, lower = stronger; 100 = bypass)"
+        range 1 100
+        default 25
+        help
+            Port of STM32F429 NsCore, run on core1 after AFE and before normal
+            Capture2 audio and KWS when its NsCore input is selected.
+            denoiseBound equals this value / 100.
+            25 means the original 0.25 spectral gain floor; smaller values
+            suppress more noise but may also attenuate speech. Overdrive
+            remains 1.0. 100 bypasses NS with unchanged PCM samples.
+            Active NS uses 160 samples at 16 kHz and adds 96 samples (6 ms)
+            of overlap-add delay, plus at most one frame for reblocking.
+    config ARRAY_VAD_MIN_NOISE_MS
+        int "AFE VAD minimum non-speech duration (ms)"
+        range 65 5000
+        default 1000
+        help
+            Minimum noise/silence duration before VAD leaves speech state.
+            The ESP-SR interface requires more than 64 ms. Reducing this
+            value ends the Capture2 speech marker and freezes DOA sooner,
+            but can split speech at short pauses. Audio remains continuous.
+    choice ARRAY_CAPTURE2_SOURCE
+        prompt "Capture2 left channel source"
+        default ARRAY_CAPTURE2_AEC_OUTPUT
+        help
+            Diagnostic sources keep DAS, resampling and AFE processing active
+            and use the same Capture2 L/R frame FIFO. Capture2 is 16-kHz,
+            16-bit stereo. The right channel has an independent source choice.
+    config ARRAY_CAPTURE2_AEC_OUTPUT
+        bool "Espressif AFE output"
+    config ARRAY_CAPTURE2_SINE_TEST
+        bool "Replace Capture2 AEC output with a 1-kHz sine table"
+        help
+            Keep DAS, resampling and AFE processing active, but send
+            a continuous 16-kHz, 1-kHz lookup-table tone into the same
+            Capture2 output FIFO for USB dropout diagnosis.
+            This source publishes from AFE feed, bypassing the NS output task.
+    config ARRAY_CAPTURE2_POST_NS_SINE_TEST
+        bool "Replace Capture2 audio after NsCore with a 1-kHz sine table"
+        help
+            Run the normal AFE fetch, NS queue, 160-sample framing and NS
+            processing before replacing only the USB left-channel samples.
+            Retain the normal NS task, publication cadence and delayed
+            VAD/DOA metadata. KWS still receives the real configured input.
+            Compare this with the AFE-feed sine source to isolate timing
+            and buffering differences from the microphone sample values.
+    config ARRAY_CAPTURE2_PLAYBACK_TEST
+        bool "Loop USB playback reference back to Capture2"
+        help
+            Send the 16-kHz, 16-bit mono playback reference supplied to
+            AFE to Capture2 instead of the cleaned microphone.
+            This is (L+R)/2 of actual I2S playback, including underrun silence
+            and the configured reference delay. No microphone gain is applied.
+    endchoice
+    choice ARRAY_CAPTURE2_RIGHT_SOURCE
+        prompt "Capture2 right channel source"
+        default ARRAY_CAPTURE2_RIGHT_VAD
+        help
+            The selected right-channel data is queued together with the
+            left audio. This does not change left-channel audio or KWS input.
+    config ARRAY_CAPTURE2_RIGHT_COPY_LEFT
+        bool "Copy left channel audio"
+        help
+            Copy each left-channel PCM16 sample to the right channel.
+    config ARRAY_CAPTURE2_RIGHT_VAD
+        bool "VAD flag"
+        help
+            Speech is +32767, non-speech is -32768, unknown is 0.
+            AFE output uses the VAD state from the same fetch result.
+    config ARRAY_CAPTURE2_RIGHT_DOA
+        bool "Smoothed DOA used by DAS"
+        help
+            Snapshot the current smoothed DAS steering angle when the audio
+            block is published. PCM16 = round(degrees * 100 - 18000).
+            Decode degrees as (PCM16 + 18000) / 100.0. This is the VAD-gated,
+            speed-limited angle, not the raw SRP-PHAT target.
+    endchoice
+endmenu
+
+rsource "kws/Kconfig.projbuild"
+
+menu "WS2812B LED ring"
+
+    config WS2812_LED_RING_ENABLE
+        bool "Enable WS2812B LED ring"
+        default y
+
+    if WS2812_LED_RING_ENABLE
+
+        config WS2812_GPIO
+            int "RMT data output GPIO"
+            range 0 54
+            default 26
+            help
+                GPIO24 and GPIO25 are reserved for the planned internal
+                Full-Speed USB PHY D-/D+ connection, so GPIO26 is used by
+                default for the LED ring data signal.
+
+        config WS2812_LED_COUNT
+            int "Number of LEDs"
+            range 1 512
+            default 50
+            help
+                This board uses one physical chain of 50 pixels. Eight pixels
+                belong to group A and the remaining 42 form logical ring B.
+
+        config WS2812_LED_RING_FPS
+            int "Effect refresh rate (frames/s)"
+            range 1 100
+            default 100
+
+        config WS2812_LED_RING_BRIGHTNESS
+            int "Global brightness percent"
+            range 1 100
+            default 20
+            help
+                Limits RGB values before transmission. A conservative default
+                reduces the peak current of a 50-LED chain.
+
+        config WS2812_LED_AUDIO_THRESHOLD_DB
+            int "Audio LED threshold (dBFS)"
+            range -96 -1
+            default -45
+            help
+                Processed recording and stereo-downmixed playback levels at or
+                below this RMS threshold map to zero LED channel intensity.
+
+        config WS2812_LED_KEYWORD_DURATION_MS
+            int "Keyword mode duration (ms)"
+            range 100 60000
+            default 1000
+            help
+                Default duration used when keyword trigger options specify
+                zero. Keyword color is supplied by each trigger call.
+
+        config WS2812_LED_RING_TASK_PRIORITY
+            int "LED effect task priority"
+            range 1 15
+            default 3
+
+        config WS2812_LED_RING_TASK_STACK_SIZE
+            int "LED effect task stack size"
+            range 2048 8192
+            default 4096
+
+    endif
+
+endmenu

@@ -1,0 +1,50 @@
+# ESP-IDF build outputs
+/build/
+/build-*/
+/managed_components/
+
+# Local ESP-IDF configuration (keep sdkconfig.defaults in Git)
+/sdkconfig.old
+/sdkconfig.old.*
+/esp32_8mic/
+/STM32F429_NS_Example/
+/tests/
+
+
+# Local scratch and generated files
+/tmp/
+/dist/
+/out/
+
+# IDE/editor state containing machine-specific paths and ports
+/.vscode/
+/.codex-tmp/
+/.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Logs, crash dumps, and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.dmp
+core
+core.*
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/

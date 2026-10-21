@@ -1,0 +1,14 @@
+{
+  "format_version": 1,
+  "frontend_profile": "mfcc40_16k_int16_state6_v1",
+  "classes": [
+    {"class_index": 0, "text": "silence"},
+    {"class_index": 1, "text": "unknown"},
+    {"class_index": 2, "text": "yes"},
+    {"class_index": 3, "text": "no"},
+    {"class_index": 4, "text": "up"},
+    {"class_index": 5, "text": "down"},
+    {"class_index": 6, "text": "left"},
+    {"class_index": 7, "text": "right"}
+  ]
+}

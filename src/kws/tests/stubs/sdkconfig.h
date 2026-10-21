@@ -1,0 +1,15 @@
+#pragma once
+
+// Host-test defaults; individual test targets can override these settings.
+#ifndef CONFIG_KWS_FILTER_NEED_VAD_CHECKED_YES
+#define CONFIG_KWS_FILTER_NEED_VAD_CHECKED_YES 0
+#endif
+#ifndef CONFIG_KWS_FILTER_STABLE_FRAMES
+#define CONFIG_KWS_FILTER_STABLE_FRAMES 3
+#endif
+#ifndef CONFIG_KWS_FILTER_KEYWORD_THRESHOLD_PERCENT
+#define CONFIG_KWS_FILTER_KEYWORD_THRESHOLD_PERCENT 80
+#endif
+#ifndef CONFIG_KWS_FILTER_COOLDOWN_MS
+#define CONFIG_KWS_FILTER_COOLDOWN_MS 500
+#endif

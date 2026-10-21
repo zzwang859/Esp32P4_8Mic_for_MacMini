@@ -1,0 +1,7 @@
+# Name, Type, SubType, Offset, Size, Flags
+nvs, data, nvs, 0x9000, 0x6000,
+factory, app, factory, 0x10000, 4M,
+model, data, spiffs, 0x410000, 512K,
+kws_a, data, spiffs, 0x490000, 1M,
+kws_b, data, spiffs, 0x590000, 1M,
+kws_cfg, data, nvs, 0x690000, 64K,
