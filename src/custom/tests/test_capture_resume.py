@@ -17,7 +17,7 @@ MOCKS = r'''
 #include "usb_audio_config.h"
 using TickType_t=uint32_t;
 using esp_err_t=int;
-constexpr unsigned CUSTOM_WORK_CAPTURE=64;
+constexpr unsigned CUSTOM_WORK_CAPTURE=64, USB_AUDIO_PRIMARY_FUNC=0;
 constexpr int ESP_OK=0;
 static TickType_t now=100;
 static unsigned checkpoints, frames, s_i2s_read_anomalies, s_raw_fifo_overflows;

@@ -3,12 +3,11 @@
 #include "usb_audio_config.h"
 
 enum {
-    /* Enumerate processed stereo capture before the raw eight-channel function. */
-    ITF_NUM_AUDIO2_CONTROL = 0,
-    ITF_NUM_AUDIO2_STREAMING_MIC,
-    ITF_NUM_AUDIO_CONTROL,
+    ITF_NUM_AUDIO_CONTROL = 0,
     ITF_NUM_AUDIO_STREAMING_SPK,
     ITF_NUM_AUDIO_STREAMING_MIC,
+    ITF_NUM_AUDIO2_CONTROL,
+    ITF_NUM_AUDIO2_STREAMING_MIC,
     ITF_NUM_HID_KEYBOARD,
     ITF_NUM_HID_CUSTOM,
     ITF_NUM_TOTAL,
@@ -42,8 +41,8 @@ enum {
      TUD_AUDIO_DESC_TYPE_I_FORMAT_LEN + TUD_AUDIO_DESC_STD_AS_ISO_EP_LEN + \
      TUD_AUDIO_DESC_CS_AS_ISO_EP_LEN)
 
-/* Independent stereo UAC2 capture function, enumerated first. At 16 kHz,
- * left is selected audio; right is the configured copy/VAD/DOA payload. */
+/* A second, independent stereo UAC2 capture function shown as another recording
+ * device by the host. At 16 kHz, left is selected audio and right is VAD data. */
 #define USB_AUDIO2_CS_AC_TOTAL_LEN \
     (TUD_AUDIO_DESC_CLK_SRC_LEN + TUD_AUDIO_DESC_INPUT_TERM_LEN + \
      TUD_AUDIO_DESC_OUTPUT_TERM_LEN)

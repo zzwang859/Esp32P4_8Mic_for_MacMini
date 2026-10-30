@@ -28,29 +28,27 @@
 #define CFG_TUD_AUDIO_ENABLE_FEEDBACK_EP                    1
 /* Packet sizes are selected from the capture FIFOs in usb_audio.c. */
 #define CFG_TUD_AUDIO_EP_IN_FLOW_CONTROL                     0
+#define CFG_TUD_AUDIO_FUNC_1_DESC_LEN                       USB_AUDIO_DESC_LEN
+#define CFG_TUD_AUDIO_FUNC_1_N_FORMATS                      1
+#define CFG_TUD_AUDIO_FUNC_1_MAX_SAMPLE_RATE                USB_AUDIO_MAX_SAMPLE_RATE_HZ
+#define CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_TX                  USB_AUDIO_MIC_CHANNELS
+#define CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_RX                  USB_AUDIO_SPK_CHANNELS
+#define CFG_TUD_AUDIO_FUNC_1_FORMAT_1_N_BYTES_PER_SAMPLE_TX USB_AUDIO_BYTES_PER_SAMPLE
+#define CFG_TUD_AUDIO_FUNC_1_FORMAT_1_RESOLUTION_TX         USB_AUDIO_SAMPLE_RESOLUTION
+#define CFG_TUD_AUDIO_FUNC_1_FORMAT_1_N_BYTES_PER_SAMPLE_RX USB_AUDIO_BYTES_PER_SAMPLE
+#define CFG_TUD_AUDIO_FUNC_1_FORMAT_1_RESOLUTION_RX         USB_AUDIO_SAMPLE_RESOLUTION
 #define CFG_TUD_AUDIO_ENABLE_EP_IN                          1
 #define CFG_TUD_AUDIO_ENABLE_EP_OUT                         1
-/* Function 0: processed stereo capture, enumerated first for host compatibility. */
-#define CFG_TUD_AUDIO_FUNC_1_DESC_LEN                       USB_AUDIO2_DESC_LEN
-#define CFG_TUD_AUDIO_FUNC_1_EP_IN_SZ_MAX                   USB_AUDIO_MIC2_EP_SIZE
-#define CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_MAX                  0
-#define CFG_TUD_AUDIO_FUNC_1_EP_IN_SW_BUF_SZ                512
-#define CFG_TUD_AUDIO_FUNC_1_EP_OUT_SW_BUF_SZ               0
+#define CFG_TUD_AUDIO_FUNC_1_EP_IN_SZ_MAX                   USB_AUDIO_MIC_EP_SIZE
+#define CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_MAX                  USB_AUDIO_SPK_EP_SIZE
+#define CFG_TUD_AUDIO_FUNC_1_EP_IN_SW_BUF_SZ                2048
+#define CFG_TUD_AUDIO_FUNC_1_EP_OUT_SW_BUF_SZ               (32U * USB_AUDIO_SPK_EP_SIZE)
+#define CFG_TUD_AUDIO_FUNC_1_N_AS_INT                       1
 #define CFG_TUD_AUDIO_FUNC_1_CTRL_BUF_SZ                    64
 
-/* Function 1: playback and raw eight-channel capture. */
-#define CFG_TUD_AUDIO_FUNC_2_DESC_LEN                       USB_AUDIO_DESC_LEN
-#define CFG_TUD_AUDIO_FUNC_2_N_FORMATS                      1
-#define CFG_TUD_AUDIO_FUNC_2_MAX_SAMPLE_RATE                USB_AUDIO_MAX_SAMPLE_RATE_HZ
-#define CFG_TUD_AUDIO_FUNC_2_N_CHANNELS_TX                  USB_AUDIO_MIC_CHANNELS
-#define CFG_TUD_AUDIO_FUNC_2_N_CHANNELS_RX                  USB_AUDIO_SPK_CHANNELS
-#define CFG_TUD_AUDIO_FUNC_2_FORMAT_1_N_BYTES_PER_SAMPLE_TX USB_AUDIO_BYTES_PER_SAMPLE
-#define CFG_TUD_AUDIO_FUNC_2_FORMAT_1_RESOLUTION_TX         USB_AUDIO_SAMPLE_RESOLUTION
-#define CFG_TUD_AUDIO_FUNC_2_FORMAT_1_N_BYTES_PER_SAMPLE_RX USB_AUDIO_BYTES_PER_SAMPLE
-#define CFG_TUD_AUDIO_FUNC_2_FORMAT_1_RESOLUTION_RX         USB_AUDIO_SAMPLE_RESOLUTION
-#define CFG_TUD_AUDIO_FUNC_2_EP_IN_SZ_MAX                   USB_AUDIO_MIC_EP_SIZE
-#define CFG_TUD_AUDIO_FUNC_2_EP_OUT_SZ_MAX                  USB_AUDIO_SPK_EP_SIZE
-#define CFG_TUD_AUDIO_FUNC_2_EP_IN_SW_BUF_SZ                2048
-#define CFG_TUD_AUDIO_FUNC_2_EP_OUT_SW_BUF_SZ               (32U * USB_AUDIO_SPK_EP_SIZE)
-#define CFG_TUD_AUDIO_FUNC_2_N_AS_INT                       1
+#define CFG_TUD_AUDIO_FUNC_2_DESC_LEN                       USB_AUDIO2_DESC_LEN
+#define CFG_TUD_AUDIO_FUNC_2_EP_IN_SZ_MAX                   USB_AUDIO_MIC2_EP_SIZE
+#define CFG_TUD_AUDIO_FUNC_2_EP_OUT_SZ_MAX                  0
+#define CFG_TUD_AUDIO_FUNC_2_EP_IN_SW_BUF_SZ                512
+#define CFG_TUD_AUDIO_FUNC_2_EP_OUT_SW_BUF_SZ               0
 #define CFG_TUD_AUDIO_FUNC_2_CTRL_BUF_SZ                    64

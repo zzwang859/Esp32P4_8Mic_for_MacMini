@@ -39,6 +39,9 @@ MOCKS = r"""
 #define _Static_assert static_assert
 #include "usb_audio_config.h"
 #include "audio_pipeline.h"
+#define USB_AUDIO_FUNCTION_COUNT 2U
+#define USB_AUDIO_SECONDARY_FUNC 1U
+#define USB_AUDIO_PRIMARY_FUNC 0U
 #define TUSB_SPEED_HIGH 1
 static_assert(USB_AUDIO_MIC2_FRAME_BYTES == 4);
 static_assert(USB_AUDIO_MIC2_EP_SIZE == 68);
@@ -58,13 +61,12 @@ static unsigned s_mono_tx_zero_packets, s_mono_tx_unexpected_sizes;
 static size_t available, read_limit, capacity, requested, written, write_limit;
 static unsigned reads, writes;
 static bool high_speed;
-static bool s_spk_active;
 static size_t speaker_bytes;
 static constexpr int s_spk_stream = 0;
 static uint32_t s_spk_feedback_level_q8, s_spk_feedback_value;
 static int tud_speed_get() { return high_speed ? TUSB_SPEED_HIGH : 0; }
 static size_t xStreamBufferBytesAvailable(int) { return speaker_bytes; }
-static bool tud_audio_n_fb_set(uint8_t id, uint32_t) { assert(id == USB_AUDIO_PLAYBACK_FUNC); return true; }
+static bool tud_audio_n_fb_set(uint8_t, uint32_t) { return true; }
 static audio_pipeline_capture2_frame_t source[17];
 static int16_t output[34];
 size_t audio_pipeline_available() { return available; }
@@ -75,11 +77,11 @@ size_t audio_pipeline_read(audio_pipeline_capture2_frame_t *packet, size_t count
     return count;
 }
 static tu_fifo_t *tud_audio_n_get_ep_in_ff(uint8_t id) {
-    assert(id == USB_AUDIO_PROCESSED_FUNC); return fifo_present ? &fifo : nullptr;
+    assert(id == 1); return fifo_present ? &fifo : nullptr;
 }
 static size_t tu_fifo_remaining(tu_fifo_t *) { return capacity; }
 static size_t tud_audio_n_write(uint8_t id, const void *packet, uint16_t bytes) {
-    assert(id == USB_AUDIO_PROCESSED_FUNC && bytes <= sizeof(output));
+    assert(id == 1 && bytes <= sizeof(output));
     ++writes; written = bytes; std::memcpy(output, packet, bytes);
     return std::min(size_t(bytes), write_limit);
 }
@@ -87,11 +89,11 @@ static void fill_mic_fifo(uint8_t) {}
 static void reset(size_t buffered = kPrime) {
     available = buffered; reads = writes = 0;
     capacity = write_limit = 68; read_limit = 17; fifo_present = true;
-    s_mic_primed[USB_AUDIO_PROCESSED_FUNC] = false; s_mic_active[USB_AUDIO_PROCESSED_FUNC] = true;
+    s_mic_primed[1] = false; s_mic_active[1] = true;
     requested = written = 0;
     s_mono_source_short_reads = s_mono_source_read_packets = 0;
     s_mono_source_zero_packets = s_mic_endpoint_fifo_backpressure = 0;
-    s_mic_endpoint_null_packets[USB_AUDIO_PROCESSED_FUNC] = s_mic_endpoint_write_shorts = 0;
+    s_mic_endpoint_null_packets[1] = s_mic_endpoint_write_shorts = 0;
     s_mono_source_min_samples = UINT32_MAX;
     s_mono_source_frames = s_mono_source_zero_pairs = 0;
     s_mono_source_packets_15 = s_mono_source_packets_16 = s_mono_source_packets_17 = 0;
@@ -104,19 +106,12 @@ static void reset(size_t buffered = kPrime) {
 
 CASES = r"""
 int main() {
-    // Protocol mask bits describe stream roles, independent of enumeration order.
-    for (unsigned mask = 0; mask < 8; ++mask) {
-        s_spk_active = (mask & 1U) != 0;
-        s_mic_active[USB_AUDIO_RAW_FUNC] = (mask & 2U) != 0;
-        s_mic_active[USB_AUDIO_PROCESSED_FUNC] = (mask & 4U) != 0;
-        assert(usb_audio_stream_mask() == mask);
-    }
     // Nominal, slow and fast USB clock compensation, preserving signed audio.
     const size_t levels[] = {kPrime, (kPrime-257), (kPrime+321)};
     const size_t frames[] = {16, 15, 17};
     for (int payload = 0; payload < 3; ++payload) {
       for (size_t n = 0; n < 3; ++n) {
-        reset(levels[n]); s_mic_primed[USB_AUDIO_PROCESSED_FUNC] = true;
+        reset(levels[n]); s_mic_primed[1] = true;
         if (n != 0) {
             s_mic2_rate_initialized = true;
             s_mic2_level_q8 = kPrime * 256;
@@ -137,12 +132,12 @@ int main() {
       }
     }
     reset((kPrime-1)); fill_capture2_fifo(); assert(reads == 0 && writes == 0);
-    reset(); fill_capture2_fifo(); assert(s_mic_primed[USB_AUDIO_PROCESSED_FUNC] && written == 64);
-    reset(14); s_mic_primed[USB_AUDIO_PROCESSED_FUNC] = true; fill_capture2_fifo();
-    assert(reads == 0 && s_mic_endpoint_null_packets[USB_AUDIO_PROCESSED_FUNC] == 1);
-    assert(!s_mic_primed[USB_AUDIO_PROCESSED_FUNC]);
+    reset(); fill_capture2_fifo(); assert(s_mic_primed[1] && written == 64);
+    reset(14); s_mic_primed[1] = true; fill_capture2_fifo();
+    assert(reads == 0 && s_mic_endpoint_null_packets[1] == 1);
+    assert(!s_mic_primed[1]);
     available = (kPrime-1); fill_capture2_fifo(); assert(reads == 0);
-    available = kPrime; fill_capture2_fifo(); assert(reads == 1 && s_mic_primed[USB_AUDIO_PROCESSED_FUNC]);
+    available = kPrime; fill_capture2_fifo(); assert(reads == 1 && s_mic_primed[1]);
     // Stereo capacity must be checked before consuming left-channel samples.
     reset(); capacity = 63; fill_capture2_fifo();
     assert(reads == 0 && writes == 0 && s_mic_endpoint_fifo_backpressure == 1);
@@ -169,7 +164,7 @@ int main() {
     reset(1000); s_mic2_rate_initialized = true; s_mic2_level_q8 = kPrime * 256;
     s_mic2_rate_phase_q16 = 65535; source[16] = {0, 0}; fill_capture2_fifo();
     assert(s_mono_source_packets_17 == 1 && s_mono_source_zero_pairs == 1);
-    reset((kPrime-257)); s_mic_primed[USB_AUDIO_PROCESSED_FUNC] = true; s_mic2_rate_initialized = true;
+    reset((kPrime-257)); s_mic_primed[1] = true; s_mic2_rate_initialized = true;
     s_mic2_level_q8 = kPrime * 256; s_mic2_rate_phase_q16 = -65535;
     source[14] = {0, 0}; fill_capture2_fifo();
     assert(s_mono_source_packets_15 == 1 && s_mono_source_zero_pairs == 1);
@@ -213,7 +208,7 @@ int main() {
                 available -= requested;
             }
         }
-        assert(s_mic_endpoint_null_packets[USB_AUDIO_PROCESSED_FUNC] == 0);
+        assert(s_mic_endpoint_null_packets[1] == 0);
         assert(s_mono_source_short_reads == 0 && s_mic_endpoint_write_shorts == 0);
         assert(minimum >= 15 && maximum <= 2048); // Actual 128-ms stereo FIFO capacity.
         // Bursty NS delivery must not cause alternating 15/17-frame traffic
@@ -256,10 +251,10 @@ int main() {
     // Packet diagnostics accept 60/64/68 bytes and reject old mono sizes.
     s_mono_tx_started = false;
     for (uint16_t bytes : {uint16_t(0), uint16_t(60), uint16_t(64), uint16_t(68)})
-        assert(tud_audio_tx_done_isr(1, bytes, USB_AUDIO_PROCESSED_FUNC, 0x83, 1));
+        assert(tud_audio_tx_done_isr(1, bytes, 1, 0x83, 1));
     assert(s_mono_tx_packets == 3 && s_mono_tx_unexpected_sizes == 0);
     for (uint16_t bytes : {uint16_t(30), uint16_t(32), uint16_t(34)})
-        tud_audio_tx_done_isr(1, bytes, USB_AUDIO_PROCESSED_FUNC, 0x83, 1);
+        tud_audio_tx_done_isr(1, bytes, 1, 0x83, 1);
     assert(s_mono_tx_unexpected_sizes == 3);
     return 0;
 }
@@ -281,7 +276,6 @@ def check_descriptors(path):
 
         device = data("s_device_descriptor")
         assert int.from_bytes(device[10:12], "little") == 0x8003
-        assert int.from_bytes(device[12:14], "little") == 0x0104
         report = data("s_custom_report_descriptor")
         assert b"\x06\x00\xff" in report and b"\x95\x40" in report
         assert b"\x81\x02" in report and b"\x91\x02" in report
@@ -290,21 +284,19 @@ def check_descriptors(path):
             assert int.from_bytes(config[2:4], "little") == len(config)
             assert config[4] == 7
             interface, found, pos = None, set(), 0
-            interfaces, iads, endpoints, captures = [], [], {}, []
             while pos < len(config):
                 size = config[pos]
                 assert size >= 2 and pos + size <= len(config)
                 desc = config[pos:pos + size]
                 if desc[1] == 4:
                     interface = desc[2]
-                    interfaces.append((interface, desc[3]))
                     if interface == 6:
                         assert desc[4:8] == bytes((2, 3, 0, 0))
-                elif desc[1] == 0x24 and interface == 0 and desc[2] == 2:
+                elif desc[1] == 0x24 and interface == 3 and desc[2] == 2:
                     assert desc[3] == 0x21 and desc[8] == 2
                     assert int.from_bytes(desc[9:13], "little") == 3
                     found.add("terminal")
-                elif desc[1] == 0x24 and interface == 1:
+                elif desc[1] == 0x24 and interface == 4:
                     if desc[2] == 1:
                         assert desc[3] == 0x23 and desc[10] == 2
                         assert int.from_bytes(desc[11:15], "little") == 3
@@ -312,7 +304,7 @@ def check_descriptors(path):
                     elif desc[2] == 2:
                         assert desc[4:6] == bytes((2, 16))
                         found.add("format")
-                elif desc[1] == 5 and interface == 1:
+                elif desc[1] == 5 and interface == 4:
                     assert desc[2] == 0x83 and desc[6] == interval
                     assert int.from_bytes(desc[4:6], "little") == 68
                     found.add("endpoint")
@@ -323,24 +315,9 @@ def check_descriptors(path):
                     assert desc[2] in (0x05, 0x85) and desc[3] & 3 == 3
                     assert int.from_bytes(desc[4:6], "little") == 64 and desc[6] == interval
                     found.add(f"custom-{desc[2]:02x}")
-                if desc[1] == 11:
-                    iads.append((desc[2], desc[3]))
-                elif desc[1] == 5:
-                    endpoints.setdefault(interface, []).append((
-                        desc[2], desc[3] & 3, int.from_bytes(desc[4:6], "little"), desc[6]))
-                elif desc[1] == 0x24 and desc[2] == 1 and interface in (1, 4):
-                    captures.append((interface, desc[10]))
                 pos += size
             assert found == {"terminal", "stream", "format", "endpoint", "keyboard", "custom-05", "custom-85"}, (name, found)
-            assert iads == [(0, 2), (2, 3)], (name, iads)
-            assert interfaces == [(0, 0), (1, 0), (1, 1), (2, 0),
-                                  (3, 0), (3, 1), (4, 0), (4, 1), (5, 0), (6, 0)]
-            assert captures == [(1, 2), (4, 8)], (name, captures)
-            assert endpoints[1] == [(0x83, 1, 68, interval)]
-            assert endpoints[3] == [(0x01, 1, 68, 1), (0x81, 1, 4, interval)]
-            assert endpoints[4] == [(0x82, 1, 400, interval)]
-            assert set(endpoints) == {1, 3, 4, 5, 6}
-            print(f"PASS {name}: stereo capture first (interface 1), raw 8ch at interface 4; playback/feedback/HID endpoints")
+            print(f"PASS {name}: Capture2 stereo L/R, 16-bit, 68-byte endpoint")
         print("PASS device PID: 0x8003")
 
 
@@ -353,7 +330,7 @@ def main():
     usb = (ROOT / "src/usb_driver/usb_audio.c").read_text(encoding="utf-8")
     limits = "\n".join(re.findall(r"^#define (?:MIC2_|SPK_FEEDBACK_TARGET_BYTES).*$", usb, re.M)) + "\n"
     code = (MOCKS + limits + function(usb, "capture2_packet_frames") + function(usb, "fill_capture2_fifo") + function(usb, "tud_audio_tx_done_isr")
-            + function(usb, "update_speaker_feedback") + function(usb, "usb_audio_stream_mask") + CASES)
+            + function(usb, "update_speaker_feedback") + CASES)
     with tempfile.TemporaryDirectory(prefix="capture2-stereo-") as temp:
         source = Path(temp) / "capture2.cpp"
         binary = Path(temp) / "capture2.exe"

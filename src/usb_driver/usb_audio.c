@@ -19,6 +19,9 @@
 #include "usb_hid_keyboard.h"
 
 static const char *TAG = "usb_audio";
+#define USB_AUDIO_FUNCTION_COUNT 2U
+#define USB_AUDIO_PRIMARY_FUNC   0U
+#define USB_AUDIO_SECONDARY_FUNC 1U
 /* Prime and control the average Capture2 occupancy at 48 ms. Individual
  * AFE/NS bursts must not be interpreted as source-clock drift. */
 #define MIC2_SAMPLES_PER_MS       (USB_AUDIO_MIC2_SAMPLE_RATE_HZ / 1000U)
@@ -141,7 +144,7 @@ static size_t capture2_packet_frames(size_t buffered, size_t nominal)
 
 static void fill_capture2_fifo(void)
 {
-    const uint8_t func_id = USB_AUDIO_PROCESSED_FUNC;
+    const uint8_t func_id = USB_AUDIO_SECONDARY_FUNC;
     _Static_assert(sizeof(audio_pipeline_capture2_frame_t) == USB_AUDIO_MIC2_FRAME_BYTES,
                    "Capture2 audio/VAD frame must match the USB stereo format");
     audio_pipeline_capture2_frame_t packet[USB_AUDIO_MIC2_EP_SIZE / USB_AUDIO_MIC2_FRAME_BYTES];
@@ -213,7 +216,7 @@ static void fill_mic_fifo_impl(uint8_t func_id, bool in_isr, BaseType_t *task_wo
         s_capture_resuming[func_id]=false;
         s_mic_primed[func_id]=false;
         s_mic2_rate_initialized=false;
-        if (func_id == USB_AUDIO_PROCESSED_FUNC) {
+        if (func_id == USB_AUDIO_SECONDARY_FUNC) {
             audio_pipeline_capture2_frame_t discard[64];
             while (audio_pipeline_read(discard,64) != 0) {}
         }
@@ -226,33 +229,33 @@ static void fill_mic_fifo_impl(uint8_t func_id, bool in_isr, BaseType_t *task_wo
 #endif
     }
     if (s_capture_recovering[func_id] && !s_maintenance) {
-        size_t buffered=func_id == USB_AUDIO_PROCESSED_FUNC ? audio_pipeline_available() : 0;
+        size_t buffered=func_id == USB_AUDIO_SECONDARY_FUNC ? audio_pipeline_available() : 0;
 #if !USB_AUDIO_MIC_TEST_TONE_ENABLED
-        if (func_id == USB_AUDIO_RAW_FUNC) buffered=xStreamBufferBytesAvailable(s_mic_stream[func_id])/USB_AUDIO_MIC_FRAME_BYTES;
+        if (func_id == USB_AUDIO_PRIMARY_FUNC) buffered=xStreamBufferBytesAvailable(s_mic_stream[func_id])/USB_AUDIO_MIC_FRAME_BYTES;
 #else
-        if (func_id == USB_AUDIO_RAW_FUNC) s_capture_recovering[func_id]=false;
+        if (func_id == USB_AUDIO_PRIMARY_FUNC) s_capture_recovering[func_id]=false;
 #endif
-        size_t threshold=func_id == USB_AUDIO_PROCESSED_FUNC ?
+        size_t threshold=func_id == USB_AUDIO_SECONDARY_FUNC ?
             USB_AUDIO_MIC2_RECOVERY_MS * MIC2_SAMPLES_PER_MS :
             USB_AUDIO_MIC_PRIME_MS * (USB_AUDIO_MIC_SAMPLE_RATE_HZ / 1000U);
         if (buffered >= threshold) s_capture_recovering[func_id]=false;
     }
     if (s_maintenance || s_capture_recovering[func_id]) {
         int16_t zero[USB_AUDIO_MIC_MS_BYTES / sizeof(int16_t)]={0};
-        uint16_t bytes=func_id == USB_AUDIO_PROCESSED_FUNC ? USB_AUDIO_MIC2_MS_BYTES : USB_AUDIO_MIC_MS_BYTES;
+        uint16_t bytes=func_id == USB_AUDIO_SECONDARY_FUNC ? USB_AUDIO_MIC2_MS_BYTES : USB_AUDIO_MIC_MS_BYTES;
         if (tud_audio_n_write(func_id,zero,bytes) != bytes) ++s_mic_endpoint_write_shorts;
         return;
     }
-    if (func_id == USB_AUDIO_PROCESSED_FUNC) {
+    if (func_id == USB_AUDIO_SECONDARY_FUNC) {
         fill_capture2_fifo();
         return;
     }
 #if USB_AUDIO_MIC_TEST_TONE_ENABLED
     int16_t packet[USB_AUDIO_MIC_MS_BYTES / sizeof(int16_t)];
-    const size_t channel_count = func_id == USB_AUDIO_RAW_FUNC
+    const size_t channel_count = func_id == USB_AUDIO_PRIMARY_FUNC
                                      ? USB_AUDIO_MIC_CHANNELS
                                      : USB_AUDIO_MIC2_CHANNELS;
-    const size_t wanted = func_id == USB_AUDIO_RAW_FUNC
+    const size_t wanted = func_id == USB_AUDIO_PRIMARY_FUNC
                               ? USB_AUDIO_MIC_MS_BYTES
                               : USB_AUDIO_MIC2_MS_BYTES;
     fill_mic_test_tone(func_id, packet,
@@ -332,7 +335,7 @@ static void update_speaker_feedback(void)
     const int32_t adjustment = (int32_t)((int64_t)error * 65536 /
                                          ((int64_t)target * frame_divisor));
     s_spk_feedback_value = (uint32_t)(nominal + adjustment);
-    (void)tud_audio_n_fb_set(USB_AUDIO_PLAYBACK_FUNC, s_spk_feedback_value);
+    (void)tud_audio_n_fb_set(USB_AUDIO_PRIMARY_FUNC, s_spk_feedback_value);
 }
 
 #if !USB_AUDIO_MIC_TEST_TONE_ENABLED
@@ -369,10 +372,10 @@ static void capture_task(void *arg)
         if (bytes_read == 0U) {
             continue;
         }
-        if (s_mic_active[USB_AUDIO_RAW_FUNC]) {
+        if (s_mic_active[USB_AUDIO_PRIMARY_FUNC]) {
             /* Keep the DSP path independent if the raw USB host stops reading. */
-            if (xStreamBufferSpacesAvailable(s_mic_stream[USB_AUDIO_RAW_FUNC]) >= bytes_read) {
-                (void)xStreamBufferSend(s_mic_stream[USB_AUDIO_RAW_FUNC],
+            if (xStreamBufferSpacesAvailable(s_mic_stream[USB_AUDIO_PRIMARY_FUNC]) >= bytes_read) {
+                (void)xStreamBufferSend(s_mic_stream[USB_AUDIO_PRIMARY_FUNC],
                                         block, bytes_read, 0);
             } else {
                 ++s_raw_fifo_overflows;
@@ -389,9 +392,9 @@ void usb_audio_get_capture_stats(usb_audio_capture_stats_t *stats)
     stats->raw_fifo_overflows = s_raw_fifo_overflows;
     stats->i2s_read_anomalies = s_i2s_read_anomalies;
     stats->raw_endpoint_null_packets =
-        s_mic_endpoint_null_packets[USB_AUDIO_RAW_FUNC];
+        s_mic_endpoint_null_packets[USB_AUDIO_PRIMARY_FUNC];
     stats->mono_endpoint_null_packets =
-        s_mic_endpoint_null_packets[USB_AUDIO_PROCESSED_FUNC];
+        s_mic_endpoint_null_packets[USB_AUDIO_SECONDARY_FUNC];
     stats->endpoint_fifo_backpressure = s_mic_endpoint_fifo_backpressure;
     stats->endpoint_write_shorts = s_mic_endpoint_write_shorts;
     stats->mono_tx_packets = s_mono_tx_packets;
@@ -544,7 +547,7 @@ void tud_resume_cb(void)
 void tud_audio_feedback_params_cb(uint8_t func_id, uint8_t alt_itf,
                                   audio_feedback_params_t *params)
 {
-    if (func_id != USB_AUDIO_PLAYBACK_FUNC) {
+    if (func_id != USB_AUDIO_PRIMARY_FUNC) {
         params->method = AUDIO_FEEDBACK_METHOD_DISABLED;
         return;
     }
@@ -571,7 +574,7 @@ bool tud_audio_set_itf_cb(uint8_t rhport,
             s_spk_queue_peak_bytes = 0;
             s_spk_feedback_value = (USB_AUDIO_SPK_SAMPLE_RATE_HZ /
                 (tud_speed_get() == TUSB_SPEED_HIGH ? 8000U : 1000U)) << 16;
-            (void)tud_audio_n_fb_set(USB_AUDIO_PLAYBACK_FUNC,
+            (void)tud_audio_n_fb_set(USB_AUDIO_PRIMARY_FUNC,
                                      s_spk_feedback_value);
             s_spk_usb_packets = 0;
             s_spk_usb_bytes = 0;
@@ -588,13 +591,13 @@ bool tud_audio_set_itf_cb(uint8_t rhport,
     } else if (itf == ITF_NUM_AUDIO_STREAMING_MIC ||
                itf == ITF_NUM_AUDIO2_STREAMING_MIC) {
         const uint8_t func_id = itf == ITF_NUM_AUDIO_STREAMING_MIC
-                                    ? USB_AUDIO_RAW_FUNC
-                                    : USB_AUDIO_PROCESSED_FUNC;
-        audio_diagnostics_set_stream(func_id == USB_AUDIO_RAW_FUNC
+                                    ? USB_AUDIO_PRIMARY_FUNC
+                                    : USB_AUDIO_SECONDARY_FUNC;
+        audio_diagnostics_set_stream(func_id == USB_AUDIO_PRIMARY_FUNC
             ? AUDIO_DIAG_CAPTURE1 : AUDIO_DIAG_CAPTURE2, alt != 0);
         s_mic_active[func_id] = false;
         s_mic_primed[func_id] = false;
-        if (func_id == USB_AUDIO_PROCESSED_FUNC) {
+        if (func_id == USB_AUDIO_SECONDARY_FUNC) {
             s_mic2_rate_initialized = false;
             s_mono_tx_started = false;
             s_mono_expected_bytes = 0;
@@ -613,11 +616,11 @@ bool tud_audio_set_itf_cb(uint8_t rhport,
                 s_mic_endpoint_null_packets[func_id] = 0;
             }
         }
-        if (func_id == USB_AUDIO_PROCESSED_FUNC) audio_pipeline_set_recording(alt != 0);
+        if (func_id == USB_AUDIO_SECONDARY_FUNC) audio_pipeline_set_recording(alt != 0);
 #if USB_AUDIO_MIC_TEST_TONE_ENABLED
         s_mic_test_tone_phase[func_id] = 0;
 #else
-        if (func_id == USB_AUDIO_RAW_FUNC) {
+        if (func_id == USB_AUDIO_PRIMARY_FUNC) {
             uint8_t discarded[USB_AUDIO_MIC_MS_BYTES];
             while (xStreamBufferReceive(s_mic_stream[func_id], discarded, sizeof(discarded), 0) != 0) {}
         }
@@ -691,7 +694,7 @@ bool tud_audio_tx_done_isr(uint8_t rhport, uint16_t n_bytes_sent,
     (void)ep_in;
     (void)cur_alt_setting;
     if (func_id < USB_AUDIO_FUNCTION_COUNT && s_mic_active[func_id]) {
-        if (func_id == USB_AUDIO_PROCESSED_FUNC) {
+        if (func_id == USB_AUDIO_SECONDARY_FUNC) {
             // TinyUSB reports the transfer it just completed, then our
             // callback refills its FIFO for a later transfer. Ignore only
             // the expected zero-length packets before the first data packet.
@@ -715,7 +718,7 @@ bool tud_audio_tx_done_isr(uint8_t rhport, uint16_t n_bytes_sent,
 void usb_audio_capture_xfer_result_isr(uint8_t func_id, uint8_t result,
                                         uint16_t bytes)
 {
-    if (func_id != USB_AUDIO_PROCESSED_FUNC ||
+    if (func_id != USB_AUDIO_SECONDARY_FUNC ||
         !s_mic_active[func_id] || !s_mono_tx_started || bytes != 0U) return;
     if (result != XFER_RESULT_SUCCESS) ++s_mono_tx_zero_failed;
     else if (s_mono_expected_bytes == 0U) ++s_mono_tx_zero_scheduled;
@@ -724,7 +727,7 @@ void usb_audio_capture_xfer_result_isr(uint8_t func_id, uint8_t result,
 
 void usb_audio_capture_xfer_scheduled_isr(uint8_t func_id, uint16_t bytes)
 {
-    if (func_id == USB_AUDIO_PROCESSED_FUNC) s_mono_expected_bytes = bytes;
+    if (func_id == USB_AUDIO_SECONDARY_FUNC) s_mono_expected_bytes = bytes;
 }
 
 static bool clock_get_request(uint8_t rhport,
@@ -810,11 +813,19 @@ bool tud_audio_set_req_entity_cb(uint8_t rhport,
 esp_err_t usb_audio_init(void)
 {
 #if !USB_AUDIO_MIC_TEST_TONE_ENABLED
-    /* Only raw capture uses a stream buffer; processed capture reads the pipeline. */
-    s_mic_stream[USB_AUDIO_RAW_FUNC] = xStreamBufferCreate(
-        USB_AUDIO_MIC_RING_BYTES, USB_AUDIO_MIC_FRAME_BYTES);
-    ESP_RETURN_ON_FALSE(s_mic_stream[USB_AUDIO_RAW_FUNC] != NULL, ESP_ERR_NO_MEM,
-                        TAG, "allocate raw capture stream buffer");
+    for (uint8_t func_id = 0; func_id < 1; ++func_id) {
+        const size_t ring_bytes = func_id == USB_AUDIO_PRIMARY_FUNC
+                                      ? USB_AUDIO_MIC_RING_BYTES
+                                      : USB_AUDIO_MIC2_RING_BYTES;
+        const size_t frame_bytes = func_id == USB_AUDIO_PRIMARY_FUNC
+                                       ? USB_AUDIO_MIC_FRAME_BYTES
+                                       : USB_AUDIO_MIC2_FRAME_BYTES;
+        s_mic_stream[func_id] = xStreamBufferCreate(
+            ring_bytes, frame_bytes);
+        ESP_RETURN_ON_FALSE(s_mic_stream[func_id] != NULL, ESP_ERR_NO_MEM,
+                            TAG, "allocate capture stream buffer %u",
+                            (unsigned)(func_id + 1U));
+    }
 #endif
     s_spk_stream = xStreamBufferCreate(USB_AUDIO_SPK_RING_BYTES,
                                        USB_AUDIO_SPK_FRAME_BYTES);
@@ -867,7 +878,7 @@ esp_err_t usb_audio_init(void)
 }
 
 unsigned usb_audio_stream_mask(void) {
-    return (s_spk_active ? 1U : 0U) | (s_mic_active[USB_AUDIO_RAW_FUNC] ? 2U : 0U) | (s_mic_active[USB_AUDIO_PROCESSED_FUNC] ? 4U : 0U);
+    return (s_spk_active ? 1U : 0U) | (s_mic_active[0] ? 2U : 0U) | (s_mic_active[1] ? 4U : 0U);
 }
 void usb_audio_set_maintenance(bool active) {
     portENTER_CRITICAL(&s_mic_fill_lock);
