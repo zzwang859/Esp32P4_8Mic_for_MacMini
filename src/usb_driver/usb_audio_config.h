@@ -3,6 +3,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* TinyUSB function indices follow the IAD order in both speed descriptors.
+ * Capture1/Capture2 retain their logical raw/processed meanings. */
+#define USB_AUDIO_FUNCTION_COUNT  2U
+#define USB_AUDIO_PROCESSED_FUNC  0U
+#define USB_AUDIO_RAW_FUNC        1U
+#define USB_AUDIO_PLAYBACK_FUNC   USB_AUDIO_RAW_FUNC
+
 #define USB_AUDIO_MIC_SAMPLE_RATE_HZ   24000U
 #define USB_AUDIO_MIC2_SAMPLE_RATE_HZ  16000U
 #define USB_AUDIO_SPK_SAMPLE_RATE_HZ   16000U

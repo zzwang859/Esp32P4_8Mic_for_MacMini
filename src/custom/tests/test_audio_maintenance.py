@@ -18,9 +18,6 @@ MOCKS=r'''
 #include "usb_audio_config.h"
 #include "audio_pipeline.h"
 using BaseType_t=int;
-#define USB_AUDIO_FUNCTION_COUNT 2
-#define USB_AUDIO_PRIMARY_FUNC 0
-#define USB_AUDIO_SECONDARY_FUNC 1
 #define MIC2_PRIME_SAMPLES ((USB_AUDIO_MIC2_SAMPLE_RATE_HZ/1000)*USB_AUDIO_MIC2_PRIME_MS)
 #define MIC2_SAMPLES_PER_MS (USB_AUDIO_MIC2_SAMPLE_RATE_HZ/1000)
 static bool s_maintenance,s_capture_resuming[2],s_capture_recovering[2],s_mic_primed[2],s_mic2_rate_initialized;
@@ -35,8 +32,9 @@ size_t audio_pipeline_available() { return processed_frames; }
 size_t audio_pipeline_read(audio_pipeline_capture2_frame_t *,size_t count) {
     ++reads; size_t n=std::min(count,processed_frames); processed_frames-=n; return n;
 }
-static size_t xStreamBufferBytesAvailable(int) { return raw_bytes; }
-static size_t xStreamBufferReceive(int,void *dst,size_t bytes,unsigned) {
+static size_t xStreamBufferBytesAvailable(int stream) { assert(stream == s_mic_stream[USB_AUDIO_RAW_FUNC]); return raw_bytes; }
+static size_t xStreamBufferReceive(int stream,void *dst,size_t bytes,unsigned) {
+    assert(stream == s_mic_stream[USB_AUDIO_RAW_FUNC]);
     ++reads; size_t n=std::min(bytes,raw_bytes); std::memset(dst,0x11,n); raw_bytes-=n; return n;
 }
 static size_t xStreamBufferReceiveFromISR(int stream,void *dst,size_t bytes,BaseType_t *) {
@@ -58,35 +56,35 @@ int main() {
         unsigned before=reads;
         fill_mic_fifo_impl(id,false,&woken);
         assert(last_id==id && reads==before && normal_calls==0);
-        assert(output.size()==(id ? USB_AUDIO_MIC2_MS_BYTES : USB_AUDIO_MIC_MS_BYTES));
+        assert(output.size()==(id == USB_AUDIO_PROCESSED_FUNC ? USB_AUDIO_MIC2_MS_BYTES : USB_AUDIO_MIC_MS_BYTES));
         assert(std::all_of(output.begin(),output.end(),[](uint8_t b){return b==0;}));
     }
     // USB alone discards old output. It keeps sending complete zero packets
     // until the post-reset reserve is ready. The normal 48-ms threshold
     // must not end recovery while the AFE's burst cadence is still settling.
     s_maintenance=false;
-    s_capture_resuming[1]=s_capture_recovering[1]=true; processed_frames=80;
-    fill_mic_fifo_impl(1,false,&woken);
+    s_capture_resuming[USB_AUDIO_PROCESSED_FUNC]=s_capture_recovering[USB_AUDIO_PROCESSED_FUNC]=true; processed_frames=80;
+    fill_mic_fifo_impl(USB_AUDIO_PROCESSED_FUNC,false,&woken);
     assert(processed_frames==0 && output.size()==USB_AUDIO_MIC2_MS_BYTES && normal_calls==0);
     processed_frames=MIC2_PRIME_SAMPLES-1;
-    fill_mic_fifo_impl(1,true,&woken);
+    fill_mic_fifo_impl(USB_AUDIO_PROCESSED_FUNC,true,&woken);
     assert(normal_calls==0 && std::all_of(output.begin(),output.end(),[](uint8_t b){return b==0;}));
     processed_frames=MIC2_PRIME_SAMPLES;
-    fill_mic_fifo_impl(1,true,&woken);
-    assert(normal_calls==0 && s_capture_recovering[1]);
+    fill_mic_fifo_impl(USB_AUDIO_PROCESSED_FUNC,true,&woken);
+    assert(normal_calls==0 && s_capture_recovering[USB_AUDIO_PROCESSED_FUNC]);
     processed_frames=USB_AUDIO_MIC2_RECOVERY_MS*MIC2_SAMPLES_PER_MS-1;
-    fill_mic_fifo_impl(1,true,&woken);
-    assert(normal_calls==0 && s_capture_recovering[1]);
+    fill_mic_fifo_impl(USB_AUDIO_PROCESSED_FUNC,true,&woken);
+    assert(normal_calls==0 && s_capture_recovering[USB_AUDIO_PROCESSED_FUNC]);
     processed_frames=USB_AUDIO_MIC2_RECOVERY_MS*MIC2_SAMPLES_PER_MS;
-    fill_mic_fifo_impl(1,true,&woken);
-    assert(normal_calls==1 && !s_capture_recovering[1]);
-    s_capture_resuming[0]=s_capture_recovering[0]=true; raw_bytes=100;
-    fill_mic_fifo_impl(0,false,&woken);
+    fill_mic_fifo_impl(USB_AUDIO_PROCESSED_FUNC,true,&woken);
+    assert(normal_calls==1 && !s_capture_recovering[USB_AUDIO_PROCESSED_FUNC]);
+    s_capture_resuming[USB_AUDIO_RAW_FUNC]=s_capture_recovering[USB_AUDIO_RAW_FUNC]=true; raw_bytes=100;
+    fill_mic_fifo_impl(USB_AUDIO_RAW_FUNC,false,&woken);
     assert(raw_bytes==0 && output.size()==USB_AUDIO_MIC_MS_BYTES);
     raw_bytes=USB_AUDIO_MIC_PRIME_MS*(USB_AUDIO_MIC_SAMPLE_RATE_HZ/1000)*USB_AUDIO_MIC_FRAME_BYTES;
-    fill_mic_fifo_impl(0,false,&woken);
-    assert(!s_capture_recovering[0] && output[0]==0x11);
-    assert(s_mic_endpoint_write_shorts==0 && s_mic_endpoint_null_packets[0]==0);
+    fill_mic_fifo_impl(USB_AUDIO_RAW_FUNC,false,&woken);
+    assert(!s_capture_recovering[USB_AUDIO_RAW_FUNC] && output[0]==0x11);
+    assert(s_mic_endpoint_write_shorts==0 && s_mic_endpoint_null_packets[USB_AUDIO_RAW_FUNC]==0);
 }
 '''
 

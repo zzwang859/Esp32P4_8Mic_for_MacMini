@@ -26,6 +26,38 @@ AFE 经 NsCore 后的输出默认接入独立 KWS 推理任务。menuconfig → 
 - 8-slot MSB TDM 录音输入和标准双声道 Philips I2S 放音输出；
 - 原始录音软件 FIFO 容量 50 ms、播放软件 FIFO 容量 40 ms，处理链路使用独立缓冲及任务。
 
+## USB 接口顺序与 Linux 录音
+
+双通道处理后录音的整个 UAC2 功能排在最前面，使只选择第一路录音的主机软件优先使用双通道。
+FS/HS 使用相同的接口顺序；VID/PID 为 `303A:8003`，设备版本 `bcdDevice=0x0104`。
+
+| 接口号 | 功能 | 端点 |
+|---:|---|---|
+| 0 | 双通道录音 AudioControl | 共用 EP0 |
+| 1 | `Stereo Capture`，2ch / 16 kHz / 16-bit | IN `0x83` |
+| 2 | 原始录音与播放 AudioControl | 共用 EP0 |
+| 3 | `Stereo Playback`，2ch / 16 kHz / 16-bit | OUT `0x01`、反馈 IN `0x81` |
+| 4 | `8 Channel Capture`，8ch / 24 kHz / 16-bit | IN `0x82` |
+| 5 | HID 键盘，instance 0 | IN `0x84` |
+| 6 | KWS 控制 HID，instance 1 | OUT `0x05`、IN `0x85` |
+
+接口 0–1 属于第一个 IAD（TinyUSB function 0），接口 2–4 属于第二个 IAD（function 1）。
+代码和控制协议仍将原始八通道称为 Capture1、处理后双通道称为 Capture2；
+`stream_mask` 的 bit0/bit1/bit2 仍分别表示播放/原始录音/处理后录音。
+
+烧录后重新插拔 USB，在目标 Linux 上执行 `arecord -l`，按列出的 card/device 编号选择双通道 PCM。
+例如双通道位于 card N、device M 时：
+
+```sh
+arecord -D hw:N,M --dump-hw-params -f S16_LE -r 16000 -c 2 -d 5 capture.wav
+```
+
+接口排序不能保证所有 Linux 驱动或应用均显示两路录音。若 ALSA 的 `arecord -l` 显示两路，
+而应用只显示一路，应检查应用的 PCM 选择或声音服务配置；若 ALSA 也缺少一路，检查
+`lsusb -v -d 303a:8003`、`cat /proc/asound/cardN/stream*` 和内核日志。
+[Linux snd-usb-audio 文档](https://docs.kernel.org/sound/alsa-configuration.html#module-snd-usb-audio)
+记录了多接口声卡注册不完整时的 `delayed_register` 选项；需结合目标内核日志判断是否适用。
+
 ## DOA、DAS 和回声消除
 
 `audio_processing/array_dsp.cpp` 实现固定 SRP-PHAT 定位和 DAS 波束形成的单精度
@@ -200,7 +232,7 @@ PTI 会屏蔽旧的未完成中断，因此仍需以 PC 录音结果确认是否
 | AFE → NsCore 输入队列 | 8 块 PSRAM，每块最多 1024 点，当前 AFE 块为 512 点 | 零等待入队，满时丢新块；NS 每 160 点处理，缺口时复位 NS/KWS |
 | AFE 内部 ring buffer | 随 VAD 语音时长自动调整，默认 12 个算法帧，当前帧长 32 ms | 默认 VAD 历史占 8 帧（最短语音 128 ms + delay 128 ms），另留 4 帧处理余量；启动时检查实际 fetch 帧长并打印容量 |
 | `output_stream`：所选音频/VAD → Capture2 | 8192 B，128 ms，stereo/16k | 启动/平均目标 48 ms，模型维护后恢复预填 96 ms；128-ms 水位滤波、分数包长校正 |
-| `s_mic_stream[0]`：原始录音 → Capture1 | 19200 B，50 ms，8ch/24k | 启动/低水位 4 ms，高水位 12 ms；原高水位 40 ms |
+| `s_mic_stream[USB_AUDIO_RAW_FUNC]`：原始录音 → Capture1 | 19200 B，50 ms，8ch/24k | 启动/低水位 4 ms，高水位 12 ms；原高水位 40 ms |
 | TinyUSB Capture1 IN FIFO | 2048 B，约 5.33 ms | 回调按包补充，通常约一个 USB 包 |
 | TinyUSB Capture2 IN FIFO | 512 B，8 ms，stereo/16k | 回调按包补充，通常约一个 USB 包 |
 | TinyUSB playback OUT FIFO | 2176 B，34 ms，stereo/16k | 接收回调立即排入播放软件 FIFO，无预填水位 |

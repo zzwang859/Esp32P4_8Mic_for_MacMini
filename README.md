@@ -10,6 +10,9 @@ HID 操作串口日志默认关闭，发送 `u/U` 切换；开启后包含绑定
 
 完整 ESP-IDF 工程。应用源码和 menuconfig 定义位于 [`src`](src/README.md)。
 
+USB 按双通道处理后录音优先的顺序枚举，随后为播放与原始八通道录音；
+接口表及 Linux 检查方法见 [USB 接口顺序与 Linux 录音](src/README.md#usb-接口顺序与-linux-录音)。
+
 ## 串口命令汇总
 
 UART0：115200 bit/s，TX GPIO37、RX GPIO38。直接发送单个字符，无需回车；表中大小写别名等效。
