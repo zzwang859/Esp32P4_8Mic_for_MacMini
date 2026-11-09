@@ -27,6 +27,7 @@
 #define LED_RING_COMMAND_QUEUE_DEPTH  8U
 #define LED_RING_KEYWORD_BLINK_MS     100U
 #define LED_RING_FAULT_BRIGHTNESS     128U
+#define LED_RING_SELF_TEST_COLOR_MS   2000U
 
 _Static_assert(LED_RING_PHYSICAL_LED_COUNT == 50,
                "the A/B LED mapping requires CONFIG_WS2812_LED_COUNT=50");
@@ -128,6 +129,37 @@ static uint8_t configured_brightness(void)
 {
     return (uint8_t)((CONFIG_WS2812_LED_RING_BRIGHTNESS * 255U + 50U) /
                      100U);
+}
+
+static esp_err_t run_startup_self_test(void)
+{
+    static const ws2812_color_t colors[] = {
+        {.r = 255U, .g = 0U, .b = 0U},
+        {.r = 0U, .g = 255U, .b = 0U},
+        {.r = 0U, .g = 0U, .b = 255U},
+    };
+    const uint8_t brightness = configured_brightness();
+
+    ESP_LOGI(TAG, "startup self-test: all A/B LEDs, R/G/B 2 s each, brightness %d%%",
+             CONFIG_WS2812_LED_RING_BRIGHTNESS);
+    for (size_t color = 0U; color < sizeof(colors) / sizeof(colors[0]); ++color) {
+        for (size_t pixel = 0U; pixel < LED_RING_PHYSICAL_LED_COUNT; ++pixel) {
+            s_frame[pixel] = colors[color];
+        }
+        ESP_RETURN_ON_ERROR(
+            ws2812_show(s_frame, LED_RING_PHYSICAL_LED_COUNT, brightness,
+                        WS2812_TX_TIMEOUT_MS),
+            TAG, "show startup self-test color");
+        vTaskDelay(pdMS_TO_TICKS(LED_RING_SELF_TEST_COLOR_MS));
+    }
+
+    memset(s_frame, 0, sizeof(s_frame));
+    ESP_RETURN_ON_ERROR(
+        ws2812_show(s_frame, LED_RING_PHYSICAL_LED_COUNT, brightness,
+                    WS2812_TX_TIMEOUT_MS),
+        TAG, "clear startup self-test");
+    ESP_LOGI(TAG, "startup self-test complete");
+    return ESP_OK;
 }
 
 static uint8_t level_to_channel(float dbfs, float threshold_db)
@@ -515,6 +547,9 @@ esp_err_t led_ring_start(void)
     }
     if (err == ESP_OK) {
         err = ws2812_refresh(WS2812_TX_TIMEOUT_MS);
+    }
+    if (err == ESP_OK) {
+        err = run_startup_self_test();
     }
     if (err == ESP_OK) {
         err = init_inputs();

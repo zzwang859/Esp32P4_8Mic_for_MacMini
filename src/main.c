@@ -23,6 +23,11 @@ void app_main(void)
     ESP_ERROR_CHECK(cpu_usage_monitor_start());
     ESP_ERROR_CHECK(custom_control_init());
 
+#if CONFIG_WS2812_LED_RING_ENABLE
+    /* Finish the 6-second A/B LED self-test before starting main functions. */
+    ESP_ERROR_CHECK(led_ring_start());
+#endif
+
     /* PCMD3180 is an ASI slave, so start the ESP32-P4 TDM clocks first. */
     ESP_ERROR_CHECK(audio_backend_init());
     esp_err_t codec_err = pcmd3180_init(NULL);
@@ -37,9 +42,6 @@ void app_main(void)
                  esp_err_to_name(processing_err));
     }
     ESP_ERROR_CHECK(usb_audio_init());
-#if CONFIG_WS2812_LED_RING_ENABLE
-    ESP_ERROR_CHECK(led_ring_start());
-#endif
     if (processing_err == ESP_OK) {
         ESP_ERROR_CHECK(keyword_actions_init());
         esp_err_t kws_err = kws_stream_start();

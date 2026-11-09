@@ -25,7 +25,7 @@ typedef struct {
     uint32_t model_epoch, config_revision;
 } led_ring_keyword_options_t;
 
-/** Initialize the RMT driver and start the periodic LED effect task. */
+/** Initialize RMT, run the blocking 6-second RGB self-test, then start LED tasks. */
 esp_err_t led_ring_start(void);
 
 /** Select persistent top-level mode 0, 1 or 4. */
